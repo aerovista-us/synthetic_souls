@@ -1,0 +1,265 @@
+<!-- Tremor Bass Viz (Drop-in) -->
+<!-- Usage: place this where you want the viz. It will auto-bind to the FIRST <audio> on the page.
+     If you want to target a specific audio element, set data-audio="#yourAudioId" on the container. -->
+
+     <div id="tremorBassViz" class="tbv" data-audio="#main-audio">
+        <canvas id="tbvCanvas" width="1200" height="360" aria-label="Tremor Bass Visualizer"></canvas>
+      
+        <!-- Optional: tiny UI overlay (remove if you want it 100% clean) -->
+        <div class="tbvHud" aria-hidden="true">
+          <div class="tbvTitle">TREMOR BASS</div>
+          <div class="tbvSub">sub-tremor • pressure waves • seismic glow</div>
+        </div>
+      </div>
+      
+      <style>
+        .tbv{
+          position:relative;
+          width:100%;
+          max-width:1100px;
+          margin:0 auto;
+          border-radius:18px;
+          overflow:hidden;
+          background: radial-gradient(120% 120% at 50% 30%, rgba(70,255,230,.10), rgba(0,0,0,.92));
+          box-shadow: 0 20px 60px rgba(0,0,0,.45);
+        }
+        #tbvCanvas{
+          width:100%;
+          height:auto;
+          display:block;
+        }
+        .tbvHud{
+          position:absolute;
+          left:16px;
+          bottom:14px;
+          display:flex;
+          flex-direction:column;
+          gap:4px;
+          pointer-events:none;
+          text-shadow: 0 2px 16px rgba(0,0,0,.8);
+        }
+        .tbvTitle{
+          font: 700 14px/1.1 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+          letter-spacing:.22em;
+          color: rgba(190,255,245,.92);
+        }
+        .tbvSub{
+          font: 500 12px/1.1 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+          letter-spacing:.08em;
+          color: rgba(190,255,245,.60);
+        }
+      </style>
+      
+      <script>
+      (() => {
+        const wrap = document.getElementById('tremorBassViz');
+        const canvas = document.getElementById('tbvCanvas');
+        const ctx = canvas.getContext('2d', { alpha: true });
+      
+        const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+        const resize = () => {
+          const w = canvas.clientWidth || 1100;
+          const h = Math.round(w * 0.30);
+          canvas.width = Math.round(w * DPR);
+          canvas.height = Math.round(h * DPR);
+          canvas.style.height = h + 'px';
+        };
+        resize();
+        window.addEventListener('resize', resize);
+      
+        // --- audio binding (works in iframe: try this document, then parent, then top)
+        const selector = (wrap.dataset.audio || '').trim();
+        function findAudio(doc) {
+          try {
+            if (selector) return doc.querySelector(selector);
+            return doc.querySelector('audio');
+          } catch (e) {
+            return null;
+          }
+        }
+        let audio = findAudio(document);
+        if (!audio) {
+          try { audio = findAudio(window.parent.document); } catch (e) {}
+        }
+        if (!audio) {
+          try { audio = findAudio(window.top.document); } catch (e) {}
+        }
+        if (!audio) {
+          ctx.setTransform(DPR,0,0,DPR,0,0);
+          ctx.clearRect(0,0,canvas.width/DPR,canvas.height/DPR);
+          ctx.fillStyle = 'rgba(190,255,245,.55)';
+          ctx.font = '600 14px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+          ctx.fillText('Tremor Bass Viz: bind to the player audio (set data-audio="#main-audio")', 14, 26);
+          return;
+        }
+      
+        let ac, src, analyser, freq, time;
+        const initAudio = () => {
+          if (ac) return;
+          ac = new (window.AudioContext || window.webkitAudioContext)();
+          analyser = ac.createAnalyser();
+          analyser.fftSize = 2048;
+          analyser.smoothingTimeConstant = 0.85;
+      
+          src = ac.createMediaElementSource(audio);
+          src.connect(analyser);
+          analyser.connect(ac.destination);
+      
+          freq = new Uint8Array(analyser.frequencyBinCount);
+          time = new Uint8Array(analyser.fftSize);
+        };
+      
+        const ensureRunning = async () => {
+          initAudio();
+          if (ac.state !== 'running') await ac.resume();
+        };
+      
+        // iOS / autoplay policies: resume on user gesture
+        ['pointerdown','touchstart','mousedown','keydown'].forEach(evt => {
+          window.addEventListener(evt, () => { ensureRunning(); }, { once:true, passive:true });
+        });
+      
+        // --- viz params
+        const clamp = (n,a,b)=>Math.max(a,Math.min(b,n));
+        const lerp = (a,b,t)=>a+(b-a)*t;
+      
+        let t0 = performance.now();
+        let bassEnergySm = 0;
+        let kickPulse = 0;
+      
+        function draw(now){
+          const dt = (now - t0) / 1000;
+          t0 = now;
+      
+          // read audio
+          if (analyser){
+            analyser.getByteFrequencyData(freq);
+            analyser.getByteTimeDomainData(time);
+          }
+      
+          const W = canvas.width / DPR;
+          const H = canvas.height / DPR;
+          ctx.setTransform(DPR,0,0,DPR,0,0);
+      
+          // background haze
+          ctx.clearRect(0,0,W,H);
+          ctx.fillStyle = 'rgba(0,0,0,.35)';
+          ctx.fillRect(0,0,W,H);
+      
+          // compute bass (bins ~ 20–160Hz region mapped to low indices)
+          let bass = 0, bassBins = 0;
+          const lo = 2;                  // skip DC
+          const hi = Math.min(28, freq.length-1); // low band slice
+          for (let i=lo;i<=hi;i++){
+            bass += freq[i];
+            bassBins++;
+          }
+          bass = bassBins ? bass / bassBins : 0; // 0..255
+          const bassN = bass / 255;
+      
+          // smooth bass for "pressure"
+          bassEnergySm = lerp(bassEnergySm, bassN, 0.12);
+          // detect kick-ish transient
+          const transient = clamp((bassN - bassEnergySm) * 3.5, 0, 1);
+          kickPulse = lerp(kickPulse, transient, 0.22);
+      
+          // stage lighting tint (no hard-coded colors? we still need a look; keeping it minimal)
+          const glow = clamp(0.15 + bassEnergySm * 0.85, 0.15, 1);
+      
+          // --- "subwoofer core" (center left) + ripple rings that shake
+          const cx = W * 0.26;
+          const cy = H * 0.52;
+          const baseR = Math.min(W,H) * 0.14;
+      
+          // subtle camera shake on bass
+          const shake = (bassEnergySm * 6 + kickPulse * 10);
+          const sx = (Math.sin(now*0.018) * shake) * 0.08;
+          const sy = (Math.cos(now*0.021) * shake) * 0.08;
+      
+          // core gradient
+          const g = ctx.createRadialGradient(cx+sx,cy+sy, baseR*0.15, cx+sx,cy+sy, baseR*1.25);
+          g.addColorStop(0, `rgba(180,255,245,${0.55*glow})`);
+          g.addColorStop(0.45, `rgba(120,255,230,${0.18*glow})`);
+          g.addColorStop(1, `rgba(0,0,0,0)`);
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(cx+sx, cy+sy, baseR*1.35, 0, Math.PI*2);
+          ctx.fill();
+      
+          // core disk
+          ctx.globalAlpha = 0.55 + glow*0.25;
+          ctx.beginPath();
+          ctx.arc(cx+sx, cy+sy, baseR*(0.55 + bassEnergySm*0.35), 0, Math.PI*2);
+          ctx.fillStyle = 'rgba(190,255,245,.35)';
+          ctx.fill();
+          ctx.globalAlpha = 1;
+      
+          // ripple rings (pressure waves)
+          const rings = 6;
+          for (let r=0;r<rings;r++){
+            const p = (r / rings);
+            const phase = (now*0.0005 + p*0.35 + bassEnergySm*0.2) % 1;
+            const rr = baseR * (0.9 + phase*2.8);
+            const a = (1 - phase) * (0.22 + bassEnergySm*0.28);
+            ctx.strokeStyle = `rgba(120,255,230,${a})`;
+            ctx.lineWidth = 2 + (1-phase)*2;
+            ctx.beginPath();
+            ctx.arc(cx+sx, cy+sy, rr, 0, Math.PI*2);
+            ctx.stroke();
+          }
+      
+          // --- "tremor lines" (ground waves) across the stage floor
+          const floorY = H*0.78;
+          const lines = 8;
+          for (let i=0;i<lines;i++){
+            const y = floorY + i*10;
+            const amp = (6 + i*0.8) * (0.25 + bassEnergySm*1.2);
+            ctx.beginPath();
+            for (let x=0;x<=W;x+=10){
+              const n = Math.sin((x*0.02) + (now*0.004) + i*0.9);
+              const m = Math.sin((x*0.009) - (now*0.003) + i*1.7);
+              const yy = y + (n+m)*amp + sy*0.6;
+              if (x===0) ctx.moveTo(x, yy);
+              else ctx.lineTo(x, yy);
+            }
+            const a = 0.08 + bassEnergySm*0.22;
+            ctx.strokeStyle = `rgba(190,255,245,${a})`;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+      
+          // --- waveform "quake" (right side) — thick low-end oscilloscope
+          const wx0 = W*0.46, wx1 = W*0.98;
+          const wy = H*0.48;
+          const amp = H*(0.10 + bassEnergySm*0.18);
+      
+          ctx.save();
+          ctx.beginPath();
+          const N = time ? time.length : 2048;
+          for (let i=0;i<N;i++){
+            const x = wx0 + (i/(N-1))*(wx1-wx0);
+            const v = time ? (time[i]-128)/128 : 0;
+            const y = wy + v*amp + sy*0.9;
+            if (i===0) ctx.moveTo(x,y);
+            else ctx.lineTo(x,y);
+          }
+          ctx.strokeStyle = `rgba(190,255,245,${0.15 + bassEnergySm*0.55})`;
+          ctx.lineWidth = 2.5 + bassEnergySm*2.8;
+          ctx.shadowColor = 'rgba(120,255,230,.55)';
+          ctx.shadowBlur = 18 * glow;
+          ctx.stroke();
+          ctx.restore();
+      
+          // subtle vignette
+          const vg = ctx.createRadialGradient(W*0.55,H*0.55, Math.min(W,H)*0.15, W*0.55,H*0.55, Math.min(W,H)*0.75);
+          vg.addColorStop(0, 'rgba(0,0,0,0)');
+          vg.addColorStop(1, 'rgba(0,0,0,.58)');
+          ctx.fillStyle = vg;
+          ctx.fillRect(0,0,W,H);
+      
+          requestAnimationFrame(draw);
+        }
+      
+        requestAnimationFrame(draw);
+      })();
+      </script>

@@ -1,0 +1,11 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+
+# Optional: uncomment to ignore large assets if you manage them elsewhere
+# assets/audio/*.mp3

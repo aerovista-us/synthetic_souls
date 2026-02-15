@@ -1,0 +1,307 @@
+<!-- RHYTHM HACK VIZ (drop-in only) -->
+<div id="rhythmHackViz" class="rhythm-hack-viz">
+    <canvas id="rhythmHackCanvas"></canvas>
+    <div class="rhythm-hack-hud">
+      <span class="tag">RHythm Hack</span>
+      <span class="tag">PH4ZE</span>
+      <span class="tag" id="rhythmHackStatus">armed</span>
+    </div>
+  </div>
+  
+  <style>
+    .rhythm-hack-viz{
+      position:relative;
+      width:100%;
+      height:260px;
+      border-radius:18px;
+      overflow:hidden;
+      background:
+        radial-gradient(1200px 420px at 20% 10%, rgba(255,0,122,.18), transparent 60%),
+        radial-gradient(900px 380px at 80% 15%, rgba(0,255,255,.12), transparent 55%),
+        radial-gradient(700px 300px at 50% 80%, rgba(90,80,255,.14), transparent 60%),
+        linear-gradient(180deg, #070a12, #040611 65%, #02030b);
+      box-shadow: 0 18px 60px rgba(0,0,0,.55);
+    }
+    .rhythm-hack-viz::before{
+      content:"";
+      position:absolute; inset:0;
+      background:
+        linear-gradient(transparent 0 8px, rgba(255,255,255,.04) 8px 9px, transparent 9px 18px);
+      background-size: 100% 18px;
+      opacity:.35;
+      mix-blend-mode: overlay;
+      pointer-events:none;
+      animation: rhScan 2.8s linear infinite;
+    }
+    .rhythm-hack-viz::after{
+      content:"";
+      position:absolute; inset:-30%;
+      background: conic-gradient(from 220deg, rgba(0,255,255,.0), rgba(0,255,255,.10), rgba(255,0,122,.0), rgba(255,0,122,.12), rgba(0,255,255,.0));
+      filter: blur(24px);
+      opacity:.55;
+      pointer-events:none;
+      animation: rhAura 7s ease-in-out infinite;
+    }
+    @keyframes rhScan { to { transform: translateY(18px); } }
+    @keyframes rhAura { 0%,100%{ transform: translate(0,0) rotate(0deg);} 50%{ transform: translate(3%, -2%) rotate(18deg);} }
+  
+    #rhythmHackCanvas{
+      width:100%;
+      height:100%;
+      display:block;
+    }
+    .rhythm-hack-hud{
+      position:absolute; left:12px; bottom:12px;
+      display:flex; gap:8px; flex-wrap:wrap;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      font-size:12px;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      opacity:.92;
+      pointer-events:none;
+    }
+    .rhythm-hack-hud .tag{
+      padding:6px 10px;
+      border-radius:999px;
+      background: rgba(10,16,30,.62);
+      border: 1px solid rgba(255,255,255,.10);
+      box-shadow: 0 8px 24px rgba(0,0,0,.35);
+      color: rgba(235,245,255,.92);
+    }
+  </style>
+  
+  <script>
+  (() => {
+    // Hook to your existing <audio>:
+    // Prefer: <audio id="audio" ...> or set window.RHYTHM_HACK_AUDIO = yourAudioElement
+    const audioEl = window.RHYTHM_HACK_AUDIO || document.getElementById("audio") || document.querySelector("audio");
+    const statusEl = document.getElementById("rhythmHackStatus");
+  
+    const wrap = document.getElementById("rhythmHackViz");
+    const c = document.getElementById("rhythmHackCanvas");
+    const ctx = c.getContext("2d", { alpha: true });
+  
+    const DPR = () => Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    function resize(){
+      const r = wrap.getBoundingClientRect();
+      c.width = Math.floor(r.width * DPR());
+      c.height = Math.floor(r.height * DPR());
+      ctx.setTransform(DPR(),0,0,DPR(),0,0);
+    }
+    window.addEventListener("resize", resize, { passive:true });
+    resize();
+  
+    // Visual state
+    let t = 0;
+    let kick = 0, snare = 0, hat = 0;
+    let glitch = 0;
+    let lastEnergy = 0;
+  
+    // Audio plumbing
+    let ac, analyser, data, srcNode;
+    let armed = false;
+  
+    function armAudio(){
+      if (armed) return;
+      armed = true;
+  
+      if (!audioEl){
+        statusEl.textContent = "demo";
+        return;
+      }
+  
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = ac.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0.7;
+  
+      // Avoid double-connecting if your player already uses WebAudio
+      srcNode = ac.createMediaElementSource(audioEl);
+      srcNode.connect(analyser);
+      analyser.connect(ac.destination);
+  
+      data = new Uint8Array(analyser.frequencyBinCount);
+      statusEl.textContent = "live";
+    }
+  
+    // Autostart on first user interaction
+    const armOnce = () => { armAudio(); window.removeEventListener("pointerdown", armOnce); window.removeEventListener("keydown", armOnce); };
+    window.addEventListener("pointerdown", armOnce, { passive:true });
+    window.addEventListener("keydown", armOnce, { passive:true });
+  
+    function energyBands(){
+      // Returns low/mid/high energy (0..1)
+      if (!analyser || !data) {
+        // demo beat
+        const bpm = 140; // Rhythm Hack vibe
+        const beat = (t * bpm / 60) % 1; // 0..1
+        const pulse = Math.exp(-Math.pow((beat*1.0), 2) * 6.0);
+        const pulse2 = Math.exp(-Math.pow(((beat*2)%1), 2) * 9.0);
+        const pulse4 = Math.exp(-Math.pow(((beat*4)%1), 2) * 12.0);
+        return {
+          low: Math.min(1, 0.25 + 0.75*pulse),
+          mid: Math.min(1, 0.20 + 0.80*pulse2),
+          high: Math.min(1, 0.15 + 0.85*pulse4),
+        };
+      }
+  
+      analyser.getByteFrequencyData(data);
+      const n = data.length;
+  
+      const sum = (a,b) => {
+        let s=0, c=0;
+        for (let i=a; i<b; i++){ s += data[i]; c++; }
+        return c ? s/(c*255) : 0;
+      };
+  
+      // Rough band splits
+      const low = sum(0, Math.floor(n*0.12));
+      const mid = sum(Math.floor(n*0.12), Math.floor(n*0.38));
+      const high = sum(Math.floor(n*0.38), Math.floor(n*0.85));
+  
+      return { low, mid, high };
+    }
+  
+    function transientDetect(e){
+      // Simple transient: energy delta
+      const cur = (e.low*0.55 + e.mid*0.30 + e.high*0.15);
+      const d = Math.max(0, cur - lastEnergy);
+      lastEnergy = cur * 0.85 + lastEnergy * 0.15;
+  
+      // Map to "drum" hits
+      kick  = Math.max(kick  * 0.86, Math.min(1, d * 5.5));
+      snare = Math.max(snare * 0.88, Math.min(1, (e.mid) * 0.85));
+      hat   = Math.max(hat   * 0.78, Math.min(1, (e.high) * 1.10));
+  
+      // occasional glitch on sharp deltas
+      glitch = Math.max(glitch * 0.82, Math.min(1, d * 9.0));
+    }
+  
+    function draw(){
+      t += 1/60;
+  
+      const W = wrap.clientWidth;
+      const H = wrap.clientHeight;
+      const cx = W*0.50;
+      const cy = H*0.52;
+  
+      const e = energyBands();
+      transientDetect(e);
+  
+      // Clear with slight persistence for trails
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "rgba(2,3,11,0.22)";
+      ctx.fillRect(0,0,W,H);
+  
+      // Neon floor grid (stage vibe)
+      const gridY = H*0.70;
+      ctx.save();
+      ctx.globalAlpha = 0.35 + 0.35*e.mid;
+      ctx.strokeStyle = "rgba(0,255,255,0.55)";
+      ctx.lineWidth = 1;
+  
+      const depth = 18;
+      for (let i=0;i<depth;i++){
+        const p = i/(depth-1);
+        const y = gridY + p*p*(H-gridY);
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+      for (let i=0;i<20;i++){
+        const p = i/19;
+        const x = p*W;
+        const skew = (x - cx) * 0.25;
+        ctx.beginPath();
+        ctx.moveTo(x, gridY);
+        ctx.lineTo(cx + (x-cx)*1.8, H);
+        ctx.stroke();
+      }
+      ctx.restore();
+  
+      // Drum-ring nodes (pads)
+      const R = Math.min(W,H)*0.20;
+      const padCount = 6;
+      for (let i=0;i<padCount;i++){
+        const a = (i/padCount)*Math.PI*2 + t*0.18;
+        const px = cx + Math.cos(a)*R*1.55;
+        const py = cy + Math.sin(a)*R*0.95;
+  
+        const hit = (i%2===0 ? kick : snare) * (0.65 + 0.35*Math.sin(t*3+i));
+        const r = 10 + hit*26;
+  
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.shadowBlur = 24 + hit*50;
+        ctx.shadowColor = i%2===0 ? "rgba(255,0,122,0.9)" : "rgba(0,255,255,0.9)";
+        ctx.fillStyle = i%2===0 ? "rgba(255,0,122,0.55)" : "rgba(0,255,255,0.50)";
+        ctx.beginPath();
+        ctx.arc(px,py,r,0,Math.PI*2);
+        ctx.fill();
+  
+        // inner core
+        ctx.fillStyle = "rgba(255,255,255,0.12)";
+        ctx.beginPath();
+        ctx.arc(px,py,Math.max(2,r*0.35),0,Math.PI*2);
+        ctx.fill();
+        ctx.restore();
+      }
+  
+      // Center "hack pulse" (spokes + stutter)
+      const spokes = 44;
+      const base = Math.min(W,H)*0.08;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.translate(cx,cy);
+  
+      const stutter = glitch>0.35 ? (Math.random()*2-1) * 6 * glitch : 0;
+      ctx.translate(stutter, -stutter*0.6);
+  
+      for (let i=0;i<spokes;i++){
+        const a = (i/spokes)*Math.PI*2;
+        const amp = (0.35 + 0.65*hat) * (0.7 + 0.3*Math.sin(t*8 + i));
+        const len = base + amp*(Math.min(W,H)*0.18);
+  
+        ctx.strokeStyle = (i%3===0) ? "rgba(255,0,122,0.75)" : "rgba(0,255,255,0.55)";
+        ctx.lineWidth = (i%4===0) ? 2 : 1;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a)*base, Math.sin(a)*base);
+        ctx.lineTo(Math.cos(a)*len,  Math.sin(a)*len);
+        ctx.stroke();
+      }
+  
+      // Center orb
+      ctx.shadowBlur = 40 + kick*80;
+      ctx.shadowColor = "rgba(180,120,255,0.9)";
+      ctx.fillStyle = "rgba(120,90,255,0.35)";
+      ctx.beginPath();
+      ctx.arc(0,0, base*1.6 + kick*18, 0, Math.PI*2);
+      ctx.fill();
+  
+      ctx.restore();
+  
+      // Glitch slices
+      if (glitch > 0.18){
+        const slices = 6 + Math.floor(glitch*8);
+        for (let i=0;i<slices;i++){
+          const h = 6 + Math.random()*18;
+          const y = Math.random()*H;
+          const x = (Math.random()*W) * 0.15;
+          const w = W - x*2;
+  
+          ctx.save();
+          ctx.globalCompositeOperation = "screen";
+          ctx.globalAlpha = 0.10 + glitch*0.22;
+          ctx.fillStyle = (Math.random()>0.5) ? "rgba(255,0,122,0.8)" : "rgba(0,255,255,0.8)";
+          ctx.fillRect(x, y, w, h);
+          ctx.restore();
+        }
+      }
+  
+      requestAnimationFrame(draw);
+    }
+  
+    draw();
+  })();
+  </script>

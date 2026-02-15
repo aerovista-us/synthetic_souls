@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Signal Cascade — Visualizer</title>
+  <style>
+    :root{
+      --bg:#05060a;
+      --fg:rgba(255,255,255,.9);
+      --dim:rgba(255,255,255,.55);
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    .wrap{height:100%;display:grid;grid-template-rows:auto 1fr auto;gap:10px;padding:14px;box-sizing:border-box}
+    .top{
+      display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap
+    }
+    .title{font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+    .meta{color:var(--dim);font-size:12px}
+    .panel{
+      position:relative;border-radius:18px;overflow:hidden;
+      background: radial-gradient(1200px 600px at 30% 20%, rgba(0,240,255,.18), transparent 60%),
+                  radial-gradient(900px 500px at 70% 40%, rgba(255,0,200,.16), transparent 55%),
+                  radial-gradient(800px 700px at 50% 80%, rgba(120,80,255,.12), transparent 60%),
+                  #05060a;
+      box-shadow:0 16px 60px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.06);
+    }
+    canvas{width:100%;height:100%;display:block}
+    .hud{
+      position:absolute;inset:auto 12px 12px 12px;
+      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+      pointer-events:none;
+    }
+    .badge{
+      pointer-events:none;
+      padding:8px 10px;border-radius:999px;
+      background:rgba(0,0,0,.35);
+      border:1px solid rgba(255,255,255,.10);
+      backdrop-filter: blur(10px);
+      font-size:12px;color:var(--dim);
+      display:flex;gap:8px;align-items:center;
+    }
+    .dot{width:8px;height:8px;border-radius:50%}
+    .controls{
+      display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center
+    }
+    input[type="file"]{max-width:260px}
+    button{
+      appearance:none;border:0;border-radius:12px;padding:10px 14px;
+      background:rgba(255,255,255,.09);color:var(--fg);
+      border:1px solid rgba(255,255,255,.12);
+      cursor:pointer;font-weight:700;
+    }
+    button:hover{background:rgba(255,255,255,.14)}
+    audio{width:100%}
+    .foot{color:var(--dim);font-size:12px}
+    @media (max-width:700px){ .controls{grid-template-columns:1fr 1fr; } input[type="file"]{max-width:100%} }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <div class="title">Signal Cascade</div>
+      <div class="meta">Synthetic Souls • neon rain • wobble sub • glitch shimmer</div>
+    </div>
+
+    <div class="controls">
+      <input id="file" type="file" accept="audio/*" />
+      <button id="play">Play</button>
+      <button id="pause">Pause</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <canvas id="c"></canvas>
+    <div class="hud">
+      <div class="badge"><span class="dot" id="dot"></span><span id="state">IDLE</span></div>
+      <div class="badge">“We don’t perform. We appear.”</div>
+    </div>
+  </div>
+
+  <div>
+    <audio id="a" controls crossorigin="anonymous"></audio>
+    <div class="foot">Tip: choose an audio file, hit Play. For best effect, keep volume moderate so the bass doesn’t clip.</div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // Optional: set a default audio file URL here (mp3/wav/ogg) if you host it somewhere.
+  const AUDIO_SRC = ""; // e.g. "assets/signal-cascade.mp3"
+
+  const audio = document.getElementById("a");
+  const file = document.getElementById("file");
+  const playBtn = document.getElementById("play");
+  const pauseBtn = document.getElementById("pause");
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+  const stateEl = document.getElementById("state");
+  const dot = document.getElementById("dot");
+
+  let ac, analyser, data, freq, srcNode;
+  let W=0,H=0, t0=performance.now();
+  let particles = [];
+  const MAXP = 240;
+
+  function resize(){
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const r = canvas.getBoundingClientRect();
+    W = Math.floor(r.width * dpr);
+    H = Math.floor(r.height * dpr);
+    canvas.width = W;
+    canvas.height = H;
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  function ensureAudioGraph(){
+    if (ac) return;
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+
+    analyser = ac.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.85;
+
+    data = new Uint8Array(analyser.fftSize);
+    freq = new Uint8Array(analyser.frequencyBinCount);
+
+    srcNode = ac.createMediaElementSource(audio);
+    srcNode.connect(analyser);
+    analyser.connect(ac.destination);
+  }
+
+  function setState(txt, on){
+    stateEl.textContent = txt;
+    dot.style.background = on ? "rgba(0,240,255,.95)" : "rgba(255,0,200,.55)";
+    dot.style.boxShadow = on ? "0 0 18px rgba(0,240,255,.55)" : "0 0 18px rgba(255,0,200,.35)";
+  }
+
+  function loadFromFile(f){
+    const url = URL.createObjectURL(f);
+    audio.src = url;
+    audio.load();
+  }
+
+  if (AUDIO_SRC){
+    audio.src = AUDIO_SRC;
+    audio.load();
+  }
+
+  file.addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) loadFromFile(f);
+  });
+
+  playBtn.addEventListener("click", async () => {
+    ensureAudioGraph();
+    if (ac.state === "suspended") await ac.resume();
+    await audio.play();
+  });
+
+  pauseBtn.addEventListener("click", () => audio.pause());
+
+  audio.addEventListener("play", () => setState("LIVE", true));
+  audio.addEventListener("pause", () => setState("PAUSED", false));
+  audio.addEventListener("ended", () => setState("ENDED", false));
+
+  function energyBand(lo, hi){
+    // average frequency magnitude for a band
+    const n = freq.length;
+    const a = Math.floor(lo * n), b = Math.floor(hi * n);
+    let s=0, c=0;
+    for (let i=a; i<b; i++){ s += freq[i]; c++; }
+    return c ? (s / (c*255)) : 0;
+  }
+
+  function spawnDroplets(k, intensity){
+    for (let i=0; i<k; i++){
+      if (particles.length >= MAXP) particles.shift();
+      particles.push({
+        x: Math.random()*W,
+        y: -20 - Math.random()*120,
+        vy: 1.2 + Math.random()*2.8 + intensity*6,
+        r: 1.5 + Math.random()*2.2 + intensity*2.2,
+        life: 0,
+        max: 120 + Math.random()*120,
+        hue: Math.random() < 0.5 ? 190 : 300, // cyan/pink
+      });
+    }
+  }
+
+  function draw(){
+    requestAnimationFrame(draw);
+    const t = (performance.now() - t0) / 1000;
+
+    // background wash
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = "rgba(5,6,10,0.35)";
+    ctx.fillRect(0,0,W,H);
+
+    let bass=0, mids=0, highs=0, rms=0;
+    if (analyser){
+      analyser.getByteTimeDomainData(data);
+      analyser.getByteFrequencyData(freq);
+
+      // RMS
+      let sum=0;
+      for (let i=0;i<data.length;i++){
+        const v = (data[i]-128)/128;
+        sum += v*v;
+      }
+      rms = Math.sqrt(sum/data.length);
+
+      bass = energyBand(0.00, 0.10);
+      mids = energyBand(0.10, 0.40);
+      highs= energyBand(0.40, 1.00);
+    }
+
+    // cascade droplets scale with highs/mids
+    if (analyser){
+      const spawn = Math.floor(2 + highs*10 + mids*6);
+      spawnDroplets(spawn, highs);
+    }
+
+    // stage glow (radial)
+    const glow = ctx.createRadialGradient(W*0.5,H*0.55, 10, W*0.5,H*0.55, Math.max(W,H)*0.75);
+    glow.addColorStop(0, `rgba(0,240,255,${0.10 + mids*0.25})`);
+    glow.addColorStop(0.5, `rgba(255,0,200,${0.07 + highs*0.18})`);
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0,0,W,H);
+
+    // waveform line
+    ctx.save();
+    ctx.translate(0, H*0.62);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let x=0; x<W; x++){
+      const i = Math.floor((x/W) * data.length);
+      const v = (data[i]-128)/128;
+      const y = v * (18 + rms*120) * (1 + bass*1.8);
+      if (x===0) ctx.moveTo(x,y);
+      else ctx.lineTo(x,y);
+    }
+    const grad = ctx.createLinearGradient(0,0,W,0);
+    grad.addColorStop(0, `rgba(0,240,255,${0.55})`);
+    grad.addColorStop(0.5, `rgba(180,120,255,${0.55})`);
+    grad.addColorStop(1, `rgba(255,0,200,${0.55})`);
+    ctx.strokeStyle = grad;
+    ctx.shadowColor = "rgba(0,240,255,0.35)";
+    ctx.shadowBlur = 18 + highs*30;
+    ctx.stroke();
+    ctx.restore();
+
+    // equalizer bars
+    const bars = 72;
+    const bw = W / bars;
+    for (let i=0;i<bars;i++){
+      const idx = Math.floor((i/bars) * freq.length);
+      const v = freq[idx]/255;
+      const h = v * (H*0.40) * (0.55 + highs*0.9);
+      const x = i*bw;
+      const y = H*0.95 - h;
+      ctx.fillStyle = `rgba(0,240,255,${0.08 + v*0.22})`;
+      ctx.fillRect(x+1, y, bw-2, h);
+    }
+
+    // droplets (signal cascade)
+    for (let p of particles){
+      p.y += p.vy;
+      p.life += 1;
+      const a = Math.max(0, 1 - p.life/p.max);
+      ctx.beginPath();
+      ctx.fillStyle = `hsla(${p.hue}, 95%, 65%, ${0.10 + a*0.55})`;
+      ctx.shadowColor = `hsla(${p.hue}, 95%, 65%, ${0.35})`;
+      ctx.shadowBlur = 16 + highs*30;
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+    particles = particles.filter(p => p.y < H + 40 && p.life < p.max);
+
+    // glitch stutter overlay on peaks
+    if (analyser && highs > 0.35 && Math.random() < highs*0.25){
+      const slices = 6 + Math.floor(highs*10);
+      for (let s=0;s<slices;s++){
+        const y = Math.random()*H;
+        const hh = 4 + Math.random()*22;
+        const shift = (Math.random()-0.5) * (20 + highs*80);
+        ctx.globalAlpha = 0.10 + highs*0.18;
+        ctx.drawImage(canvas, 0, y, W, hh, shift, y, W, hh);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // subtle vignette
+    const vg = ctx.createRadialGradient(W*0.5,H*0.5, Math.min(W,H)*0.25, W*0.5,H*0.5, Math.max(W,H)*0.7);
+    vg.addColorStop(0, "rgba(0,0,0,0)");
+    vg.addColorStop(1, "rgba(0,0,0,0.55)");
+    ctx.fillStyle = vg;
+    ctx.fillRect(0,0,W,H);
+  }
+
+  setState("IDLE", false);
+  draw();
+})();
+</script>
+</body>
+</html>
