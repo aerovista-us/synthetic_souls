@@ -3,147 +3,219 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Character Image Extraction</title>
+  <title>Character Image Extraction | Synthetic Souls</title>
   <style>
     body {
-      background-color: #111;
+      background-color: #0e0e11;
       color: #f0f0f5;
-      font-family: sans-serif;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       max-width: 1200px;
       margin: 0 auto;
-      padding: 20px;
+      padding: 24px;
     }
-    
-    canvas {
-      border: 1px solid #333;
-      display: block;
-      margin: 20px 0;
-      max-width: 100%;
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      color: #31fff7;
     }
-    
-    .controls {
+    .usage {
+      font-size: 0.875rem;
+      color: rgba(240, 240, 245, 0.75);
       margin-bottom: 20px;
+      padding: 12px 16px;
+      background: rgba(26, 26, 29, 0.6);
+      border-radius: 8px;
+      border-left: 3px solid #ff31b0;
     }
-    
-    button {
+    .usage strong { color: #f0f0f5; }
+    .source-info {
+      font-size: 0.8rem;
+      color: rgba(240, 240, 245, 0.6);
+      margin-top: 8px;
+    }
+    .controls {
+      margin-bottom: 24px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .controls button {
       background: linear-gradient(90deg, #ff31b0, #9a31ff);
       color: white;
       border: none;
-      padding: 10px 15px;
-      margin: 5px;
+      padding: 10px 16px;
       cursor: pointer;
-      border-radius: 5px;
+      border-radius: 6px;
+      font-weight: 600;
+      transition: transform 0.2s, box-shadow 0.2s;
     }
-    
+    .controls button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(255, 49, 176, 0.4);
+    }
+    .controls button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    #loadStatus {
+      font-size: 0.875rem;
+      color: #31fff7;
+    }
+    #loadStatus.error { color: #ff6b6b; }
+    #sourceImage {
+      max-width: 100%;
+      display: block;
+      border-radius: 8px;
+      border: 1px solid rgba(49, 255, 247, 0.2);
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+    }
     .output {
       display: flex;
       flex-wrap: wrap;
-      gap: 20px;
+      gap: 24px;
+      margin-top: 24px;
     }
-    
     .character-image {
       text-align: center;
+      padding: 16px;
+      background: rgba(26, 26, 29, 0.6);
+      border-radius: 8px;
+      border: 1px solid rgba(49, 255, 247, 0.2);
     }
-    
     .character-image img {
-      max-width: 300px;
+      max-width: 280px;
+      display: block;
+      border-radius: 4px;
       border: 1px solid #333;
     }
+    .character-image .label {
+      margin-top: 10px;
+      font-weight: 600;
+      color: #31fff7;
+    }
+    .character-image a {
+      display: inline-block;
+      margin-top: 8px;
+      color: #ff31b0;
+      font-size: 0.875rem;
+      text-decoration: none;
+    }
+    .character-image a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
   <h1>Character Image Extraction</h1>
-  
+  <p class="usage">
+    <strong>Dev tool.</strong> Slices <code>glitch-portraits.png</code> into the three character portraits used on the main page.
+    Output filenames match <code>synthetic-souls.html</code>: <strong>soul-tiger.png</strong> (PH4ZE), <strong>soul-reflection.png</strong> (VEKTOR), <strong>soul-clash.png</strong> (X1NTH).
+    Save downloads into <code>assets/images/</code> to update the main site. Run from a local server (e.g. same as synthetic-souls) to avoid CORS issues.
+  </p>
+
   <div class="controls">
-    <button id="extractPh4ze">Extract PH4ZE</button>
-    <button id="extractVektor">Extract VEKTOR</button>
-    <button id="extractX1nth">Extract X1NTH</button>
-    <button id="extractAll">Extract All</button>
+    <button id="extractPh4ze" disabled>Extract PH4ZE → soul-tiger.png</button>
+    <button id="extractVektor" disabled>Extract VEKTOR → soul-reflection.png</button>
+    <button id="extractX1nth" disabled>Extract X1NTH → soul-clash.png</button>
+    <button id="extractAll" disabled>Extract All (3 PNGs)</button>
+    <span id="loadStatus">Loading source image…</span>
   </div>
-  
+
   <h2>Source Image</h2>
-  <img id="sourceImage" src="assets/images/glitch-portraits.png" alt="Glitch Portraits" style="max-width: 100%;">
-  
+  <p class="source-info">Expected layout: single image, 3 equal columns left-to-right = PH4ZE | VEKTOR | X1NTH (e.g. 1125×850 or 375px wide per character).</p>
+  <img id="sourceImage" src="assets/images/glitch-portraits.png" alt="Glitch Portraits">
+
   <h2>Extracted Images</h2>
   <div class="output" id="output"></div>
-  
+
   <script>
-    document.addEventListener('DOMContentLoaded', function() {
+    (function() {
       const sourceImage = document.getElementById('sourceImage');
       const output = document.getElementById('output');
-      
-      // Button click handlers
-      document.getElementById('extractPh4ze').addEventListener('click', () => extractCharacter('ph4ze'));
-      document.getElementById('extractVektor').addEventListener('click', () => extractCharacter('vektor'));
-      document.getElementById('extractX1nth').addEventListener('click', () => extractCharacter('x1nth'));
-      document.getElementById('extractAll').addEventListener('click', extractAll);
-      
-      // Extract coordinates based on the glitch-portraits.png layout
+      const loadStatus = document.getElementById('loadStatus');
+      const buttons = {
+        ph4ze: document.getElementById('extractPh4ze'),
+        vektor: document.getElementById('extractVektor'),
+        x1nth: document.getElementById('extractX1nth'),
+        all: document.getElementById('extractAll')
+      };
+
+      // Output filenames matching synthetic-souls.html (assets/images/)
+      const OUTPUT_FILES = {
+        ph4ze: 'soul-tiger.png',
+        vektor: 'soul-reflection.png',
+        x1nth: 'soul-clash.png'
+      };
+
+      // Layout: 3 columns, same height. Adjust if your glitch-portraits.png differs.
+      const LAYOUT = { colWidth: 375, height: 850 };
       function getCoordinates(character) {
-        switch(character) {
-          case 'ph4ze':
-            return { x: 0, y: 0, width: 375, height: 850 };
-          case 'vektor':
-            return { x: 375, y: 0, width: 375, height: 850 };
-          case 'x1nth':
-            return { x: 750, y: 0, width: 375, height: 850 };
-          default:
-            return null;
-        }
+        const i = { ph4ze: 0, vektor: 1, x1nth: 2 }[character];
+        if (i === undefined) return null;
+        return {
+          x: i * LAYOUT.colWidth,
+          y: 0,
+          width: LAYOUT.colWidth,
+          height: LAYOUT.height
+        };
       }
-      
-      // Extract a single character from the source image
+
+      function setReady(ok) {
+        loadStatus.textContent = ok ? 'Source image loaded. Choose a character or Extract All.' : 'Source image failed to load. Check path: assets/images/glitch-portraits.png';
+        loadStatus.className = ok ? '' : 'error';
+        Object.keys(buttons).forEach(k => { buttons[k].disabled = !ok; });
+      }
+
+      sourceImage.onload = () => setReady(true);
+      sourceImage.onerror = () => setReady(false);
+      if (sourceImage.complete && sourceImage.naturalWidth) setReady(true);
+
       function extractCharacter(character) {
         const coords = getCoordinates(character);
         if (!coords) return;
-        
-        // Create canvas and context
+
         const canvas = document.createElement('canvas');
         canvas.width = coords.width;
         canvas.height = coords.height;
         const ctx = canvas.getContext('2d');
-        
-        // Draw the portion of the source image
         ctx.drawImage(
           sourceImage,
           coords.x, coords.y, coords.width, coords.height,
           0, 0, coords.width, coords.height
         );
-        
-        // Convert to data URL
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-        
-        // Create character image element
+
+        const dataUrl = canvas.toDataURL('image/png');
+        const filename = OUTPUT_FILES[character];
+
         const charDiv = document.createElement('div');
         charDiv.className = 'character-image';
-        
         const img = document.createElement('img');
         img.src = dataUrl;
         img.alt = character.toUpperCase();
-        
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = character.toUpperCase() + ' → ' + filename;
         const downloadLink = document.createElement('a');
         downloadLink.href = dataUrl;
-        downloadLink.download = `${character}.jpg`;
-        downloadLink.textContent = `Download ${character.toUpperCase()}`;
-        downloadLink.style.display = 'block';
-        downloadLink.style.marginTop = '10px';
-        
+        downloadLink.download = filename;
+        downloadLink.textContent = 'Download ' + filename;
         charDiv.appendChild(img);
+        charDiv.appendChild(label);
         charDiv.appendChild(downloadLink);
         output.appendChild(charDiv);
-        
-        // Trigger download
         downloadLink.click();
       }
-      
-      // Extract all characters
+
       function extractAll() {
         output.innerHTML = '';
-        extractCharacter('ph4ze');
-        extractCharacter('vektor');
-        extractCharacter('x1nth');
+        ['ph4ze', 'vektor', 'x1nth'].forEach(extractCharacter);
       }
-    });
+
+      buttons.ph4ze.addEventListener('click', () => extractCharacter('ph4ze'));
+      buttons.vektor.addEventListener('click', () => extractCharacter('vektor'));
+      buttons.x1nth.addEventListener('click', () => extractCharacter('x1nth'));
+      buttons.all.addEventListener('click', extractAll);
+    })();
   </script>
 </body>
-</html> 
+</html>

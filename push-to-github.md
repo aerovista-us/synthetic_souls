@@ -2,37 +2,66 @@
 
 Repo: **https://github.com/aerovista-us/synthetic_souls**
 
-Run these commands from the **synthetic-souls** folder (use a local copy or mapped drive if the project lives on a network path; git push often fails from UNC paths).
+## If Git says "dubious ownership" (network/UNC path)
+
+Trust this directory once (run from any folder):
 
 ```bash
-cd /path/to/synthetic-souls
+git config --global --add safe.directory '%(prefix)///100.115.9.61/NXDrive/EchoVerse/Music/player/app/pages/synthetic-souls'
+```
+
+Then retry `git add` / `git commit`.
+
+---
+
+## First-time push (from synthetic-souls folder)
+
+```bash
+cd "\\100.115.9.61\NXDrive\EchoVerse\Music\player\app\pages\synthetic-souls"
 
 # One-time setup
 git init
-git branch -M main
 git remote add origin https://github.com/aerovista-us/synthetic_souls.git
-
-# Stage and commit
 git add .
 git commit -m "Initial commit: Synthetic Souls page, visualizers, player"
 
-# Push (requires push access to the repo)
+# Use main branch (Git may have created master)
+git branch -M main
+
+# Push via HTTPS (prompts for username + Personal Access Token)
 git push -u origin main
 ```
 
-If `origin` already exists and points elsewhere, fix it:
+---
+
+## If you get "Permission denied (publickey)" (SSH)
+
+You added `origin` as SSH (`git@github.com:...`) but this machine has no SSH key for GitHub. Use HTTPS instead:
 
 ```bash
-git remote remove origin
-git remote add origin https://github.com/aerovista-us/synthetic_souls.git
+git remote set-url origin https://github.com/aerovista-us/synthetic_souls.git
+git push -u origin main
 ```
 
-If the repo has a README or license and Git says "refusing to merge unrelated histories":
+When prompted: **Username** = your GitHub username, **Password** = a [Personal Access Token](https://github.com/settings/tokens) (not your account password).
+
+---
+
+## If you get "src refspec main does not match any"
+
+Your first commit created branch `master`. Rename it to `main` then push:
+
+```bash
+git branch -M main
+git push -u origin main
+```
+
+---
+
+## If the repo already has a README and Git refuses to push
 
 ```bash
 git pull origin main --allow-unrelated-histories
-# resolve any conflicts, then:
+# fix any conflicts if needed, then:
 git push -u origin main
 ```
-
-For HTTPS, Git will prompt for your GitHub username and a **Personal Access Token** (not your password). Create one at: GitHub → Settings → Developer settings → Personal access tokens.

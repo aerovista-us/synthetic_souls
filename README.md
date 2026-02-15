@@ -58,9 +58,12 @@ synthetic-souls/
 ├── synthetic-souls.css
 ├── synthetic-souls.html
 ├── synthetic-souls.js
-├── create-character-images.html
+├── create-character-images.html   (dev: slice glitch-portraits.png → soul-tiger, soul-reflection, soul-clash)
 └── README.md
 ```
+
+### Dev: Character image extraction
+Open `create-character-images.html` (e.g. via the same local server as the main page). It loads `assets/images/glitch-portraits.png` and slices it into three PNGs that match the main site: **soul-tiger.png** (PH4ZE), **soul-reflection.png** (VEKTOR), **soul-clash.png** (X1NTH). Save the downloaded files into `assets/images/` to update the character portraits. The source image is expected as three equal columns (e.g. 1125×850: 375px wide per character).
 
 ## Recent Upgrades
 
