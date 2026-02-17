@@ -618,7 +618,10 @@ body::before {
     right: 15px;
     width: 30px;
     height: 30px;
+    border: none;
     border-radius: 50%;
+    padding: 0;
+    font: inherit;
     background: var(--neon-pink);
     color: white;
     display: flex;
@@ -2382,6 +2385,57 @@ body::before {
 }
 
 .live-shot-card img {
+    width: 100%;
+    height: auto;
+    display: block;
+    filter: saturate(1.1) contrast(1.05);
+    transform: scale(1.01);
+}
+
+/* Swag / Store section */
+.swag {
+    padding: 4rem 2rem;
+    text-align: center;
+}
+
+.swag h2 {
+    position: relative;
+    display: inline-block;
+    margin-bottom: 1rem;
+    font-size: 2.2rem;
+    color: var(--neon-cyan);
+}
+
+.swag p {
+    max-width: 900px;
+    margin: 0.5rem auto 2rem;
+    color: rgba(240, 240, 245, 0.85);
+    letter-spacing: 1px;
+}
+
+.swag-card {
+    max-width: 980px;
+    margin: 0 auto;
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    position: relative;
+}
+
+.swag-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(0deg, rgba(14, 14, 17, 0.55), rgba(14, 14, 17, 0.05)),
+        radial-gradient(circle at 20% 20%, rgba(255, 49, 176, 0.15), transparent 35%),
+        radial-gradient(circle at 80% 70%, rgba(49, 255, 247, 0.12), transparent 40%);
+}
+
+.swag-card img {
     width: 100%;
     height: auto;
     display: block;

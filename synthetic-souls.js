@@ -274,6 +274,10 @@ function initPageTransitions() {
   internalLinks.forEach(link => {
     link.addEventListener('click', (e) => {
       const targetId = link.getAttribute('href');
+      if (targetId === '#') {
+        e.preventDefault();
+        return;
+      }
       const targetElement = document.querySelector(targetId);
       
       if (targetElement) {
@@ -779,6 +783,12 @@ function openCharacterModal(character) {
   
   // Play character audio
   playCharacterAudio(character, 0.5);
+  
+  // Focus close button for keyboard users
+  const closeBtn = modal.querySelector('.modal-close');
+  if (closeBtn) {
+    setTimeout(() => closeBtn.focus(), 50);
+  }
   
   // Animate modal content
   setTimeout(() => {
